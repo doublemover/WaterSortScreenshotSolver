@@ -224,13 +224,12 @@ function setLegend(colorsById, labels) {
     txt.textContent = name;
 
     const del = document.createElement('button');
-    del.className = 'del';
     del.type = 'button';
-    del.title = 'Remove this color from detection';
+    del.className = 'del';
     del.textContent = '×';
+    del.title = 'Delete this color from detection';
     del.addEventListener('click', (ev) => {
       ev.stopPropagation();
-      clearLegendSelection();
       deleteDetectedColor(id);
     });
 
@@ -376,35 +375,46 @@ function mergeDetectedColors(keepId, dropId) {
   setStatus(`Merged colors.`);
 }
 
-function deleteDetectedColor(colorId) {
+function deleteDetectedColor(id) {
   if (!parseResult) return;
 
-  const d = Number(colorId);
-  if (!Number.isFinite(d)) return;
+  const cid = Number(id);
+  if (!Number.isFinite(cid)) return;
 
   const colorsById = parseResult.colors_by_id || {};
-  if (!(String(d) in colorsById)) return;
+  if (!(String(cid) in colorsById)) return;
 
-  // Remove from palette
-  delete colorsById[String(d)];
-  if (parseResult.color_unit_counts) delete parseResult.color_unit_counts[String(d)];
+  // Clear legend selection if it points to this color.
+  if (legendSelectedId === cid) clearLegendSelection();
+
+  // Remove the color definition
+  delete colorsById[String(cid)];
+  if (parseResult.color_unit_counts) delete parseResult.color_unit_counts[String(cid)];
+
   if (Array.isArray(parseResult.colors)) {
-    parseResult.colors = parseResult.colors.filter((c) => c.id !== d);
+    parseResult.colors = parseResult.colors.filter((c) => c.id !== cid);
   }
 
-  // Replace occurrences in detected bottles with empty
-  parseResult.bottle_contents_ids = (parseResult.bottle_contents_ids || []).map((b) => b.map((cid) => (cid === d ? null : cid)));
-  parseResult.bottle_contents_hex = (parseResult.bottle_contents_ids || []).map((b) => b.map((cid) => (cid === null || cid === undefined) ? null : (colorsById[String(cid)] || null)));
+  // Replace occurrences in detected bottles with empty slots.
+  parseResult.bottle_contents_ids = (parseResult.bottle_contents_ids || []).map((b) =>
+    b.map((v) => (v === cid ? null : v))
+  );
 
-  // Keep bottles[] in sync (so any downstream consumers don't see a ghost color)
+  // Rebuild hex contents
+  parseResult.bottle_contents_hex = (parseResult.bottle_contents_ids || []).map((b) =>
+    b.map((v) => (v === null || v === undefined) ? null : (colorsById[String(v)] || null))
+  );
+
+  // Keep bottles[] in sync
   if (Array.isArray(parseResult.bottles)) {
     for (const b of parseResult.bottles) {
       if (!b?.slots) continue;
       for (const s of b.slots) {
-        if (s?.color_id === d) {
-          s.filled = false;
+        if (!s?.filled) continue;
+        if (s.color_id === cid) {
           s.color_id = null;
           s.color_hex = null;
+          s.filled = false;
         }
       }
     }
@@ -421,7 +431,7 @@ function deleteDetectedColor(colorId) {
   renderOutput(stacks, null, null);
 
   btnSolve.disabled = false;
-  setStatus(`Deleted color.`);
+  setStatus('Deleted color from detection.');
 }
 
 function onLegendItemClick(id) {
